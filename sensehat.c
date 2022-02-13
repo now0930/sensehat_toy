@@ -5,31 +5,67 @@
 #include <linux/i2c.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
-
-struct hts221 {
-	int T0_degC_x8;
-	int T1_degC_x8;
-	int T0_OUT;
-	int T1_OUT;
-	int T_OUT;
-	int T1T0MSB;
-	int temperature;
-};
-
-struct rpisense {
-	struct device *dev;
-	struct i2c_client *i2c_client;
-	struct hts221 temperature_data;
-	/* Client devices */
-};
-
-
-#define LPS25H (0x5c)	//humidity, temperature
-#define LSM9DS1 (0x1c)	//accelometer
-#define HTS221 (0x5f)	//humidity, temperature
-#define LED2472G (0x46)	//LED Matrix
+#include "sensehat.h"
 
 static struct rpisense *rpisense;
+
+//frame buffer, global variable
+static int frame_buffer[LED_MAX] = {0x00};
+
+void clear_display(struct rpisense *rpisense_ptr){
+	struct i2c_client *client;
+	struct rpisense *rpi;
+	int i;
+	rpi = rpisense_ptr;
+	client = rpi->i2c_client;
+	client->addr = LED2472G;
+	//pr_info("hit\n");
+	for (i=0;i<LED_MAX;i++)
+	{
+		i2c_smbus_write_byte_data(client, i, 0x00);
+
+	}
+
+}
+
+void set_pixel(int x, int y, int red, int green, int blue){
+	int r_addr, g_addr, b_addr;
+	//max, min값을 찾기보다 필터 적용
+	x = x & 0x7;
+	y = y & 0x7;
+        r_addr = (y * 24) + x;
+        g_addr = r_addr + 8;
+        b_addr = g_addr + 8;
+	//밝기 최대 63
+        frame_buffer[r_addr] = (red & 63);
+        frame_buffer[g_addr] = (green & 63);
+        frame_buffer[b_addr] = (blue & 63);
+}
+
+void flush(struct rpisense *rpisense_ptr){
+	struct i2c_client *client;
+	struct rpisense *rpi;
+	int i;
+	rpi = rpisense_ptr;
+	client = rpi->i2c_client;
+	client->addr = LED2472G;
+	for (i=0;i<LED_MAX;i++){
+		i2c_smbus_write_byte_data(client, i, frame_buffer[i]);
+	}
+}
+
+void default_display(struct rpisense *rpisense_ptr){
+	struct i2c_client *client;
+	struct rpisense *rpi;
+	int i;
+	rpi = rpisense_ptr;
+	client = rpi->i2c_client;
+	client->addr = LED2472G;
+	for (i=0;i<LED_MAX;i++){
+		i2c_smbus_write_byte_data(client, i, default_image[i]);
+	}
+
+}
 
 int get_temperature(struct rpisense *rpisense_ptr){
 	int ret, littled;
@@ -87,9 +123,13 @@ int get_temperature(struct rpisense *rpisense_ptr){
 
 	rpi->temperature_data.temperature = ret;
 	//pr_info("val: %x\n",ret);
-	return 0;
+	if (ret < 0 | ret > 40)
+		return -1;
+	else
+		return ret;
 
 }
+
 
 static int rpisense_probe(struct i2c_client *i2c,
 			       const struct i2c_device_id *id)
@@ -103,7 +143,7 @@ static int rpisense_probe(struct i2c_client *i2c,
 	rpisense->dev = &i2c->dev;
 	rpisense->i2c_client = i2c;
 	pr_info("probed\n");
-	get_temperature(rpisense);
+	pr_info("temperature: %d\n",get_temperature(rpisense));
 	//display address is 0x46
 	//pr_info("client address is: %x\n", rpisense->i2c_client->addr);
 	//rpisense->i2c_client->addr = HTS221;
@@ -117,6 +157,11 @@ static int rpisense_probe(struct i2c_client *i2c,
 	//littled = cpu_to_le16(ret);
 	//ret=i2c_smbus_read_byte_data(rpisense->i2c_client, 0x2a);
 	//pr_info("read: %d\n",littled);
+	clear_display(rpisense);
+	//default_display(rpisense);
+	set_pixel(2,0, 0x00, 0x1, 0x0);
+	set_pixel(3,1, 0x00, 0x0, 0x1);
+	flush(rpisense);
 	rpisense->i2c_client->addr = 0x0;
 	return 0;
 }
@@ -124,6 +169,7 @@ static int rpisense_probe(struct i2c_client *i2c,
 static int rpisense_remove(struct i2c_client *i2c)
 {
 	struct rpisense *rpisense = i2c_get_clientdata(i2c);
+	clear_display(rpisense);
 	pr_info("removed\n");
 	return 0;
 }
