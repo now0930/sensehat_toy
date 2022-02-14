@@ -5,12 +5,52 @@
 #include <linux/i2c.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/fs.h>
 #include "sensehat.h"
 
+static int Major = 0;
+static int DeviceOpen = 0;
 static struct rpisense *rpisense;
-
+static struct class *mychardev_class = NULL;
 //frame buffer, global variable
 static int frame_buffer[LED_MAX] = {0x00};
+
+//https://tldp.org/LDP/lkmpg/2.6/html/x569.html
+//참조
+
+
+static int device_open(struct inode *inode, struct file *file){
+	DeviceOpen++;
+	pr_info("opened\n");
+
+	return 0;
+
+
+}
+static int device_release(struct inode *inode, struct file *file){
+	DeviceOpen--;
+	return 0;
+
+
+}
+static ssize_t temperature_read(struct file *flip, char *buffer, size_t size, loff_t *offset){
+	return 0;
+
+
+}
+static ssize_t ledmatix_write(struct file *filp, const char *buffer, size_t size, loff_t *offset){
+	return 0;
+
+
+}
+
+
+static struct file_operations tmpre_fops = {
+	.read = temperature_read, //a user can read device to get temperature.
+	.write = ledmatix_write, // a user can write data to device linked to led matrix
+	.open = device_open,
+	.release = device_release
+};
 
 void clear_display(struct rpisense *rpisense_ptr){
 	struct i2c_client *client;
@@ -68,7 +108,7 @@ void default_display(struct rpisense *rpisense_ptr){
 }
 
 int get_temperature(struct rpisense *rpisense_ptr){
-	int ret, littled;
+	int ret;
 	struct i2c_client *client;
 	struct rpisense *rpi;
 	rpi = rpisense_ptr;
@@ -123,7 +163,7 @@ int get_temperature(struct rpisense *rpisense_ptr){
 
 	rpi->temperature_data.temperature = ret;
 	//pr_info("val: %x\n",ret);
-	if (ret < 0 | ret > 40)
+	if ((ret < 0) | (ret > 40))
 		return -1;
 	else
 		return ret;
@@ -135,6 +175,7 @@ static int rpisense_probe(struct i2c_client *i2c,
 			       const struct i2c_device_id *id)
 {
 	int ret;
+	dev_t dev;
 	rpisense = devm_kzalloc(&i2c->dev, sizeof(struct rpisense), GFP_KERNEL);
 	if (rpisense == NULL)
 		return -ENOMEM;
@@ -142,6 +183,26 @@ static int rpisense_probe(struct i2c_client *i2c,
 	i2c_set_clientdata(i2c, rpisense);
 	rpisense->dev = &i2c->dev;
 	rpisense->i2c_client = i2c;
+
+	//https://olegkutkov.me/2018/03/14/simple-linux-character-device-driver/
+	ret = alloc_chrdev_region(&dev, 0, 1, "char_tmpre");
+	Major = MAJOR(dev);
+	mychardev_class = class_create(THIS_MODULE, "rpi-sense-tmpre");
+	cdev_init(&rpisense->cdev_temperature, &tmpre_fops);
+	rpisense->cdev_temperature.owner = THIS_MODULE;
+
+	cdev_add(&rpisense->cdev_temperature, MKDEV(Major, 0), 1);
+
+	device_create(mychardev_class, NULL, MKDEV(Major, 0), NULL, "rs-tmpre%d",1);
+
+	pr_info(KERN_INFO "%d was reigistered\n",Major);
+	if (Major < 0){
+		pr_info(KERN_ALERT "Registering char device was failed\n");
+		return Major;
+	}
+
+	
+
 	pr_info("probed\n");
 	pr_info("temperature: %d\n",get_temperature(rpisense));
 	//display address is 0x46
@@ -157,11 +218,11 @@ static int rpisense_probe(struct i2c_client *i2c,
 	//littled = cpu_to_le16(ret);
 	//ret=i2c_smbus_read_byte_data(rpisense->i2c_client, 0x2a);
 	//pr_info("read: %d\n",littled);
-	clear_display(rpisense);
-	//default_display(rpisense);
-	set_pixel(2,0, 0x00, 0x1, 0x0);
-	set_pixel(3,1, 0x00, 0x0, 0x1);
-	flush(rpisense);
+	//clear_display(rpisense);
+	default_display(rpisense);
+	//set_pixel(2,0, 0x00, 0x1, 0x0);
+	//set_pixel(3,1, 0x00, 0x0, 0x1);
+	//flush(rpisense);
 	rpisense->i2c_client->addr = 0x0;
 	return 0;
 }
@@ -169,6 +230,13 @@ static int rpisense_probe(struct i2c_client *i2c,
 static int rpisense_remove(struct i2c_client *i2c)
 {
 	struct rpisense *rpisense = i2c_get_clientdata(i2c);
+	device_destroy(mychardev_class, MKDEV(Major, 0));
+	class_unregister(mychardev_class);
+	//i2c remove가 destroy
+	//class_destroy(mychardev_class);
+	unregister_chrdev_region(MKDEV(Major, 0), 1);
+	//unregister_chrdev(Major, DeviceName);
+	pr_info(KERN_INFO "unregistering device\n");
 	clear_display(rpisense);
 	pr_info("removed\n");
 	return 0;
