@@ -14,15 +14,21 @@ static struct rpisense *rpisense;
 static struct class *mychardev_class = NULL;
 //frame buffer, global variable
 static int frame_buffer[LED_MAX] = {0x00};
+int get_temperature(struct rpisense *rpisense_ptr);
 
 //https://tldp.org/LDP/lkmpg/2.6/html/x569.html
 //참조
+static int mychardev_uevent(struct device *dev, struct kobj_uevent_env *env)
+{
+    add_uevent_var(env, "DEVMODE=%#o", 0666);
+    return 0;
+}
 
 
 static int device_open(struct inode *inode, struct file *file){
+	if (DeviceOpen)
+		return -EBUSY;
 	DeviceOpen++;
-	pr_info("opened\n");
-
 	return 0;
 
 
@@ -34,13 +40,37 @@ static int device_release(struct inode *inode, struct file *file){
 
 }
 static ssize_t temperature_read(struct file *flip, char *buffer, size_t size, loff_t *offset){
-	return 0;
+	int temp, ret ;
+	size_t len;
+	//get temperature
+	temp = get_temperature(rpisense);
+	sprintf(rpisense->sending_data, "%d\n", temp);
+	//send_data = &temp;
 
+	len = sizeof(rpisense->sending_data);
+	if (size > len)
+		size = len;
 
+	ret = copy_to_user(buffer, (void*)rpisense->sending_data, size);
+	if(ret)
+		return -EFAULT;
+	//pr_info("%s: %d was read\n",__func__, size);
+	return size;
 }
+//https://hyeyoo.com/85
 static ssize_t ledmatix_write(struct file *filp, const char *buffer, size_t size, loff_t *offset){
-	return 0;
+	size_t maxdatalen = LED_MAX * 4;
+	int ret;
 
+	if (size < maxdatalen)
+		maxdatalen = size; 
+	ret = copy_from_user(rpisense->received_image, buffer, maxdatalen);
+	
+	//databuf[maxdatalen] = 0;
+	pr_info("%s: %d remains, %s\n", __func__, ret, rpisense->received_image);
+	//pr_info("%s\n", databuf);
+
+	return ret;
 
 }
 
@@ -49,7 +79,9 @@ static struct file_operations tmpre_fops = {
 	.read = temperature_read, //a user can read device to get temperature.
 	.write = ledmatix_write, // a user can write data to device linked to led matrix
 	.open = device_open,
-	.release = device_release
+	.release = device_release,
+	.read = temperature_read,
+	.write = ledmatix_write
 };
 
 void clear_display(struct rpisense *rpisense_ptr){
@@ -187,7 +219,12 @@ static int rpisense_probe(struct i2c_client *i2c,
 	//https://olegkutkov.me/2018/03/14/simple-linux-character-device-driver/
 	ret = alloc_chrdev_region(&dev, 0, 1, "char_tmpre");
 	Major = MAJOR(dev);
+	
+	//user permission configure.
+	//https://olegkutkov.me/2018/03/14/simple-linux-character-device-driver/
 	mychardev_class = class_create(THIS_MODULE, "rpi-sense-tmpre");
+	mychardev_class->dev_uevent = mychardev_uevent;
+
 	cdev_init(&rpisense->cdev_temperature, &tmpre_fops);
 	rpisense->cdev_temperature.owner = THIS_MODULE;
 
