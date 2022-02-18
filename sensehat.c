@@ -28,11 +28,13 @@ static int device_open(struct inode *inode, struct file *file){
 	if (DeviceOpen)
 		return -EBUSY;
 	DeviceOpen++;
+	pr_info("opened\n");
 	return 0;
 
 
 }
 static int device_release(struct inode *inode, struct file *file){
+	pr_info("released\n");
 	DeviceOpen--;
 	return 0;
 
@@ -43,6 +45,7 @@ static ssize_t temperature_read(struct file *flip, char *buffer, size_t size, lo
 	size_t len;
 	//get temperature
 	temp = get_temperature(rpisense);
+	pr_info("%s: %d\n",__func__, temp);
 	sprintf(rpisense->sending_data, "%d\n", temp);
 	//send_data = &temp;
 
@@ -53,7 +56,9 @@ static ssize_t temperature_read(struct file *flip, char *buffer, size_t size, lo
 	ret = copy_to_user(buffer, (void*)rpisense->sending_data, size);
 	if(ret)
 		return -EFAULT;
-	//pr_info("%s: %d was read\n",__func__, size);
+	pr_info("%s: %d was read\n",__func__, size);
+	//initialize data
+	sprintf(rpisense->sending_data, "%d\n", 0);
 	return size;
 }
 //https://hyeyoo.com/85
@@ -69,7 +74,6 @@ static ssize_t ledmatix_write(struct file *filp, const char *buffer, size_t size
 	//pr_info("%s: %d remains, %s\n", __func__, ret, rpisense->received_image);
 	pr_info("%s: %d written\n", __func__, sizeof(rpisense->received_image));
 	flush(rpisense);
-
 	return ret;
 
 }
@@ -80,8 +84,6 @@ static struct file_operations tmpre_fops = {
 	.write = ledmatix_write, // a user can write data to device linked to led matrix
 	.open = device_open,
 	.release = device_release,
-	.read = temperature_read,
-	.write = ledmatix_write
 };
 
 void clear_display(struct rpisense *rpisense_ptr){
@@ -148,6 +150,17 @@ int get_temperature(struct rpisense *rpisense_ptr){
 	rpi = rpisense_ptr;
 	client = rpi->i2c_client;
 	client->addr = HTS221;
+	//0x20, power on, ...
+	//device didnt update temperature after loading module.
+	ret = i2c_smbus_write_byte_data(client, 0x20, 0x85);
+
+	//0x27 chech..ready bit
+	ret = i2c_smbus_read_word_data(client, 0x27);
+	if (!(ret & 0x1)){
+		pr_info(KERN_ERR "register was not ready\n");
+		return 0;
+	}
+
 	//0x2a, little endian T_OUT;
 	ret = i2c_smbus_read_word_data(client, 0x2a);
 	//littled = cpu_to_le16(ret);
@@ -197,6 +210,12 @@ int get_temperature(struct rpisense *rpisense_ptr){
 
 	rpi->temperature_data.temperature = ret;
 	//pr_info("val: %x\n",ret);
+
+
+	//0x20, power on, ...
+	//device didnt update temperature after loading module.
+	i2c_smbus_write_byte_data(client, 0x20, 0x5);
+
 	if ((ret < 0) | (ret > 40))
 		return -1;
 	else
@@ -243,7 +262,7 @@ static int rpisense_probe(struct i2c_client *i2c,
 	
 
 	pr_info("probed\n");
-	pr_info("temperature: %d\n",get_temperature(rpisense));
+	//pr_info("temperature: %d\n",get_temperature(rpisense));
 	//display address is 0x46
 	//pr_info("client address is: %x\n", rpisense->i2c_client->addr);
 	//rpisense->i2c_client->addr = HTS221;
@@ -309,6 +328,5 @@ static struct i2c_driver rpisense_driver = {
 module_i2c_driver(rpisense_driver);
 
 MODULE_DESCRIPTION("Raspberry Pi Sense HAT core driver");
-MODULE_AUTHOR("Serge Schneider <serge@raspberrypi.org>");
+MODULE_AUTHOR("now0930");
 MODULE_LICENSE("GPL");
-
