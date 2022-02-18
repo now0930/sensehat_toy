@@ -23,8 +23,7 @@ struct rpisense {
 	struct cdev cdev_temperature;
 	struct cdev cdev_ledmatrix;
 	char sending_data[4];
-	char received_image[LED_MAX*4];
-	
+	char received_image[LED_MAX];
 	/* Client devices */
 };
 
@@ -99,3 +98,10 @@ static int device_open(struct inode *, struct file *);
 static int device_release(struct inode *, struct file *);
 static ssize_t temperature_read(struct file *, char *, size_t, loff_t *);
 static ssize_t ledmatix_write(struct file *, const char *, size_t, loff_t *);
+
+
+
+int get_temperature(struct rpisense *rpisense_ptr);
+void flush(struct rpisense *rpisense_ptr);
+
+

@@ -14,7 +14,6 @@ static struct rpisense *rpisense;
 static struct class *mychardev_class = NULL;
 //frame buffer, global variable
 static int frame_buffer[LED_MAX] = {0x00};
-int get_temperature(struct rpisense *rpisense_ptr);
 
 //https://tldp.org/LDP/lkmpg/2.6/html/x569.html
 //참조
@@ -59,7 +58,7 @@ static ssize_t temperature_read(struct file *flip, char *buffer, size_t size, lo
 }
 //https://hyeyoo.com/85
 static ssize_t ledmatix_write(struct file *filp, const char *buffer, size_t size, loff_t *offset){
-	size_t maxdatalen = LED_MAX * 4;
+	size_t maxdatalen = LED_MAX;
 	int ret;
 
 	if (size < maxdatalen)
@@ -67,8 +66,9 @@ static ssize_t ledmatix_write(struct file *filp, const char *buffer, size_t size
 	ret = copy_from_user(rpisense->received_image, buffer, maxdatalen);
 	
 	//databuf[maxdatalen] = 0;
-	pr_info("%s: %d remains, %s\n", __func__, ret, rpisense->received_image);
-	//pr_info("%s\n", databuf);
+	//pr_info("%s: %d remains, %s\n", __func__, ret, rpisense->received_image);
+	pr_info("%s: %d written\n", __func__, sizeof(rpisense->received_image));
+	flush(rpisense);
 
 	return ret;
 
@@ -122,7 +122,9 @@ void flush(struct rpisense *rpisense_ptr){
 	client = rpi->i2c_client;
 	client->addr = LED2472G;
 	for (i=0;i<LED_MAX;i++){
-		i2c_smbus_write_byte_data(client, i, frame_buffer[i]);
+		//i2c_smbus_write_byte_data(client, i, frame_buffer[i]);
+		i2c_smbus_write_byte_data(client, i, rpi->received_image[i]);
+
 	}
 }
 
