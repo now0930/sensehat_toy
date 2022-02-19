@@ -181,19 +181,19 @@ int get_temperature(struct rpisense *rpisense_ptr){
 	ret = i2c_smbus_read_word_data(client, 0x2a);
 	//littled = cpu_to_le16(ret);
 	rpi->temperature_data.T_OUT = ret;
-	pr_info("T_OUT: %x\n",ret);
+	//pr_info("T_OUT: %x\n",ret);
 
 	//pr_info("address: %x\n",client->addr);
 	//pr_info("val: %x\n",rpi->temperature_data.T_OUT);
 	ret = i2c_smbus_read_byte_data(client, 0x32);
 	//ret = cpu_to_le16(ret);
 	rpi->temperature_data.T0_degC_x8 = ret;
-	pr_info("T0_degC: %x\n",ret);
+	//pr_info("T0_degC: %x\n",ret);
 
 	ret = i2c_smbus_read_byte_data(client, 0x33);
 	//littled = cpu_to_le16(ret);
 	rpi->temperature_data.T1_degC_x8 = ret;
-	pr_info("T1_degC: %x\n",ret);
+	//pr_info("T1_degC: %x\n",ret);
 
 	//T1T0 msb
 	ret = i2c_smbus_read_byte_data(client, 0x35);
@@ -201,21 +201,21 @@ int get_temperature(struct rpisense *rpisense_ptr){
 
 	rpi->temperature_data.T0_degC_x8 = \
 		(rpi->temperature_data.T0_degC_x8 + (1<<8)*(ret & 0x03))/8;
-	pr_info("T0_degC_x8: %x\n",rpi->temperature_data.T0_degC_x8);
+	//pr_info("T0_degC_x8: %x\n",rpi->temperature_data.T0_degC_x8);
 
 	rpi->temperature_data.T1_degC_x8 = \
 		(rpi->temperature_data.T1_degC_x8 + (1<<6)*(ret & 0x0c))/8;
-	pr_info("T1_degC_x8: %x\n",rpi->temperature_data.T1_degC_x8);
+	//pr_info("T1_degC_x8: %x\n",rpi->temperature_data.T1_degC_x8);
 
 	ret = i2c_smbus_read_word_data(client, 0x3c);
 	//littled = cpu_to_le16(ret);
 	rpi->temperature_data.T0_OUT = ret;
-	pr_info("T0_OUT: %x\n",ret);
+	//pr_info("T0_OUT: %x\n",ret);
 
 	ret = i2c_smbus_read_word_data(client, 0x3e);
 	//littled = cpu_to_le16(ret);
 	rpi->temperature_data.T1_OUT = ret;
-	pr_info("T1_OUT: %x\n",ret);
+	//pr_info("T1_OUT: %x\n",ret);
 
 
 	//measeure temperature
