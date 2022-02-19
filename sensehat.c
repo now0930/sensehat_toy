@@ -6,6 +6,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/fs.h>
+#include <linux/delay.h>
 #include "sensehat.h"
 
 static int Major = 0;
@@ -148,11 +149,26 @@ int get_temperature(struct rpisense *rpisense_ptr){
 	struct i2c_client *client;
 	struct rpisense *rpi;
 	rpi = rpisense_ptr;
+
+
+	//initialize.
+	rpi->temperature_data.T0_degC_x8 = 0;
+	rpi->temperature_data.T1_degC_x8 = 0;
+	rpi->temperature_data.T0_OUT = 0;
+	rpi->temperature_data.T1_OUT = 0;
+	rpi->temperature_data.T_OUT = 0;
+	rpi->temperature_data.T1T0MSB = 0;
+	rpi->temperature_data.temperature = 0;
+
 	client = rpi->i2c_client;
 	client->addr = HTS221;
 	//0x20, power on, ...
 	//device didnt update temperature after loading module.
-	ret = i2c_smbus_write_byte_data(client, 0x20, 0x85);
+	i2c_smbus_write_byte_data(client, 0x20, 0x81);
+
+	//oneshot initialize
+	i2c_smbus_write_byte_data(client, 0x21, 0x1);
+	msleep(100);
 
 	//0x27 chech..ready bit
 	ret = i2c_smbus_read_word_data(client, 0x27);
@@ -165,19 +181,19 @@ int get_temperature(struct rpisense *rpisense_ptr){
 	ret = i2c_smbus_read_word_data(client, 0x2a);
 	//littled = cpu_to_le16(ret);
 	rpi->temperature_data.T_OUT = ret;
-	//pr_info("T_OUT: %x\n",ret);
+	pr_info("T_OUT: %x\n",ret);
 
 	//pr_info("address: %x\n",client->addr);
 	//pr_info("val: %x\n",rpi->temperature_data.T_OUT);
 	ret = i2c_smbus_read_byte_data(client, 0x32);
 	//ret = cpu_to_le16(ret);
 	rpi->temperature_data.T0_degC_x8 = ret;
-	//pr_info("T0_degC: %x\n",ret);
+	pr_info("T0_degC: %x\n",ret);
 
 	ret = i2c_smbus_read_byte_data(client, 0x33);
 	//littled = cpu_to_le16(ret);
 	rpi->temperature_data.T1_degC_x8 = ret;
-	//pr_info("T1_degC: %x\n",ret);
+	pr_info("T1_degC: %x\n",ret);
 
 	//T1T0 msb
 	ret = i2c_smbus_read_byte_data(client, 0x35);
@@ -185,21 +201,21 @@ int get_temperature(struct rpisense *rpisense_ptr){
 
 	rpi->temperature_data.T0_degC_x8 = \
 		(rpi->temperature_data.T0_degC_x8 + (1<<8)*(ret & 0x03))/8;
-	//pr_info("T0_degC: %x\n",rpi->temperature_data.T0_degC_x8);
+	pr_info("T0_degC_x8: %x\n",rpi->temperature_data.T0_degC_x8);
 
 	rpi->temperature_data.T1_degC_x8 = \
 		(rpi->temperature_data.T1_degC_x8 + (1<<6)*(ret & 0x0c))/8;
-	//pr_info("T1_degC: %x\n",rpi->temperature_data.T1_degC_x8);
+	pr_info("T1_degC_x8: %x\n",rpi->temperature_data.T1_degC_x8);
 
 	ret = i2c_smbus_read_word_data(client, 0x3c);
 	//littled = cpu_to_le16(ret);
 	rpi->temperature_data.T0_OUT = ret;
-	//pr_info("T0_OUT: %x\n",ret);
+	pr_info("T0_OUT: %x\n",ret);
 
 	ret = i2c_smbus_read_word_data(client, 0x3e);
 	//littled = cpu_to_le16(ret);
 	rpi->temperature_data.T1_OUT = ret;
-	//pr_info("T1_OUT: %x\n",ret);
+	pr_info("T1_OUT: %x\n",ret);
 
 
 	//measeure temperature
@@ -214,7 +230,8 @@ int get_temperature(struct rpisense *rpisense_ptr){
 
 	//0x20, power on, ...
 	//device didnt update temperature after loading module.
-	i2c_smbus_write_byte_data(client, 0x20, 0x5);
+	// 1hz로 해야 업데이트가 잘 됨.
+	i2c_smbus_write_byte_data(client, 0x20, 0x1);
 
 	if ((ret < 0) | (ret > 40))
 		return -1;
