@@ -1,4 +1,6 @@
 #include <linux/cdev.h>
+#include <linux/workqueue.h>
+
 #define LPS25H (0x5c)	//humidity, temperature
 #define LSM9DS1 (0x1c)	//accelometer
 #define HTS221 (0x5f)	//humidity, temperature
@@ -29,7 +31,11 @@ struct rpisense {
 	struct cdev cdev_humidity;
 	char sending_temperature[40];
 	char sending_humidity[40];
-	char received_image[LED_MAX];
+	char recv_temp_image[LED_MAX];
+	char recv_humi_image[LED_MAX];
+	struct work_struct temp_queue;
+	struct work_struct humi_queue;
+
 	/* Client devices */
 };
 
@@ -114,6 +120,10 @@ static ssize_t humidy_ledmatix_write(struct file *, const char *, size_t, loff_t
 
 
 int get_hts221(struct rpisense *rpisense_ptr);
-void flush(struct rpisense *rpisense_ptr);
+void flush(struct rpisense *rpisense_ptr, bool flag);
 
+static void workfn_display(struct work_struct *work);
+static void workfn_display2(struct work_struct *work);
+
+void default_display(struct rpisense *rpisense_ptr);
 

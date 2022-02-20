@@ -77,12 +77,12 @@ static ssize_t temper_ledmat_write(struct file *filp, const char *buffer, size_t
 
 	if (size < maxdatalen)
 		maxdatalen = size; 
-	ret = copy_from_user(rpisense->received_image, buffer, maxdatalen);
+	ret = copy_from_user(rpisense->recv_temp_image, buffer, maxdatalen);
 	
 	//databuf[maxdatalen] = 0;
-	//pr_info("%s: %d remains, %s\n", __func__, ret, rpisense->received_image);
-	//pr_info("%s: %d written\n", __func__, sizeof(rpisense->received_image));
-	flush(rpisense);
+	//pr_info("%s: %d remains, %s\n", __func__, ret, rpisense->recv_temp_image);
+	//pr_info("%s: %d written\n", __func__, sizeof(rpisense->recv_temp_image));
+	schedule_work(&rpisense->temp_queue);
 	return ret;
 
 }
@@ -137,17 +137,11 @@ static ssize_t humidy_ledmatix_write(struct file *filp, const char *buffer, size
 
 	if (size < maxdatalen)
 		maxdatalen = size; 
-	ret = copy_from_user(rpisense->received_image, buffer, maxdatalen);
-	
+	ret = copy_from_user(rpisense->recv_humi_image, buffer, maxdatalen);
+
 	//databuf[maxdatalen] = 0;
-	//pr_info("%s: %d remains, %s\n", __func__, ret, rpisense->received_image);
-	//pr_info("%s: %d written\n", __func__, sizeof(rpisense->received_image));
-	flush(rpisense);
+	schedule_work(&rpisense->humi_queue);
 	return ret;
-
-
-
-	return 0;
 }
 
 
@@ -165,6 +159,18 @@ static struct file_operations humidy_fops= {
 	.open = humidy_device_open,
 	.release = humidy_device_release,
 };
+
+static void workfn_display(struct work_struct *work){
+	//pr_info("work queue was activeted\n");
+	//display temperature
+	flush(rpisense, false);
+}
+
+static void workfn_display2(struct work_struct *work){
+	//pr_info("work queue was activeted\n");
+	//display temperature
+	flush(rpisense, true);
+}
 
 
 void clear_display(struct rpisense *rpisense_ptr){
@@ -197,17 +203,26 @@ void set_pixel(int x, int y, int red, int green, int blue){
         frame_buffer[b_addr] = (blue & 63);
 }
 
-void flush(struct rpisense *rpisense_ptr){
+void flush(struct rpisense *rpisense_ptr, bool flag){
 	struct i2c_client *client;
 	struct rpisense *rpi;
 	int i;
 	rpi = rpisense_ptr;
 	client = rpi->i2c_client;
 	client->addr = LED2472G;
-	for (i=0;i<LED_MAX;i++){
-		//i2c_smbus_write_byte_data(client, i, frame_buffer[i]);
-		i2c_smbus_write_byte_data(client, i, rpi->received_image[i]);
+	if ( flag == true){
+		for (i=0;i<LED_MAX;i++){
+			//i2c_smbus_write_byte_data(client, i, frame_buffer[i]);
+			i2c_smbus_write_byte_data(client, i, rpi->recv_temp_image[i]);
 
+		}
+	}
+	else{
+		for (i=0;i<LED_MAX;i++){
+			//i2c_smbus_write_byte_data(client, i, frame_buffer[i]);
+			i2c_smbus_write_byte_data(client, i, rpi->recv_humi_image[i]);
+
+		}
 	}
 }
 
@@ -412,6 +427,9 @@ static int rpisense_probe(struct i2c_client *i2c,
 	setup_hts221(rpisense);
 	pr_info("probed\n");
 	default_display(rpisense);
+	INIT_WORK(&rpisense->temp_queue, workfn_display);
+	INIT_WORK(&rpisense->humi_queue, workfn_display2);
+
 	rpisense->i2c_client->addr = 0x0;
 	return 0;
 }
@@ -427,6 +445,8 @@ static int rpisense_remove(struct i2c_client *i2c)
 	unregister_chrdev_region(MKDEV(Major, 0), 2);
 	//unregister_chrdev(Major, DeviceName);
 	pr_info(KERN_INFO "unregistering device\n");
+	flush_work(&rpisense->temp_queue);
+	flush_work(&rpisense->humi_queue);
 	clear_display(rpisense);
 	shutdown_hts221(rpisense);
 	pr_info("removed\n");
