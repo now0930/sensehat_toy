@@ -404,7 +404,7 @@ static int rpisense_probe(struct i2c_client *i2c,
 	
 	//user permission configure.
 	//https://olegkutkov.me/2018/03/14/simple-linux-character-device-driver/
-	mychardev_class = class_create(THIS_MODULE, "rpi-sense-tmpre");
+	mychardev_class = class_create(THIS_MODULE, "rpi-sensehat");
 	mychardev_class->dev_uevent = mychardev_uevent;
 
 	cdev_init(&rpisense->cdev_temperature, &tmpre_fops);

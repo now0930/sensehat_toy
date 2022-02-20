@@ -356,6 +356,7 @@ int main(void) {
 	int number;
 	char image[LED_MAX] = "", image2[LED_MAX] = "";
 	int read_ret, write_ret;
+	sleep(10);
 	while (1) {
 
 		fd = open("/dev/rs-tmpre1", O_RDWR);
