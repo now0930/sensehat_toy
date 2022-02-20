@@ -8,6 +8,7 @@ LED matrix에 표시<br>
 
 자동화 하기 위해서는 UDEV, systemctl을 사용해야 함.<br>
 
+https://youtu.be/tVd1sNaY1JY
 
 1. module 설치
 ```
