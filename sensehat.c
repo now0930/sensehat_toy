@@ -11,6 +11,7 @@
 
 static int Major = 0;
 static int DeviceOpen = 0;
+static int H_DeviceOpen = 0;
 static struct rpisense *rpisense;
 static struct class *mychardev_class = NULL;
 //frame buffer, global variable
@@ -25,45 +26,52 @@ static int mychardev_uevent(struct device *dev, struct kobj_uevent_env *env)
 }
 
 
-static int device_open(struct inode *inode, struct file *file){
+static int temper_device_open(struct inode *inode, struct file *file){
 	if (DeviceOpen)
 		return -EBUSY;
 	DeviceOpen++;
-	pr_info("opened\n");
+	//pr_info("opened\n");
 	return 0;
 
 
 }
-static int device_release(struct inode *inode, struct file *file){
-	pr_info("released\n");
+static int temper_device_release(struct inode *inode, struct file *file){
+	//pr_info("released\n");
 	DeviceOpen--;
 	return 0;
-
-
 }
 static ssize_t temperature_read(struct file *flip, char *buffer, size_t size, loff_t *offset){
 	int temp, ret ;
 	size_t len;
+	struct hts221* my;
+	my = &rpisense->hts221_data;
 	//get temperature
-	temp = get_temperature(rpisense);
-	pr_info("%s: %d\n",__func__, temp);
-	sprintf(rpisense->sending_data, "%d\n", temp);
+	temp = get_hts221(rpisense);
+	//pr_info("%s: %d\n",__func__, temp);
+	sprintf(rpisense->sending_temperature + strlen(rpisense->sending_temperature), "%d,", temp);
+	sprintf(rpisense->sending_temperature + strlen(rpisense->sending_temperature), "%d,", my->T0_degC_x8);
+	sprintf(rpisense->sending_temperature + strlen(rpisense->sending_temperature), "%d,", my->T1_degC_x8);
+	sprintf(rpisense->sending_temperature + strlen(rpisense->sending_temperature), "%d,", my->T0_OUT);
+	sprintf(rpisense->sending_temperature + strlen(rpisense->sending_temperature), "%d,", my->T1_OUT);
+	sprintf(rpisense->sending_temperature + strlen(rpisense->sending_temperature), "%d,", my->T_OUT);
+	sprintf(rpisense->sending_temperature + strlen(rpisense->sending_temperature), "%d", my->T1T0MSB);
+
 	//send_data = &temp;
 
-	len = sizeof(rpisense->sending_data);
+	len = sizeof(rpisense->sending_temperature);
+
 	if (size > len)
 		size = len;
 
-	ret = copy_to_user(buffer, (void*)rpisense->sending_data, size);
+	ret = copy_to_user(buffer, (void*)rpisense->sending_temperature, size);
 	if(ret)
 		return -EFAULT;
-	pr_info("%s: %d was read\n",__func__, size);
-	//initialize data
-	sprintf(rpisense->sending_data, "%d\n", 0);
+	//pr_info("%s: %d was read\n",__func__, size);
+	sprintf(rpisense->sending_temperature, "%s","");
 	return size;
 }
 //https://hyeyoo.com/85
-static ssize_t ledmatix_write(struct file *filp, const char *buffer, size_t size, loff_t *offset){
+static ssize_t temper_ledmat_write(struct file *filp, const char *buffer, size_t size, loff_t *offset){
 	size_t maxdatalen = LED_MAX;
 	int ret;
 
@@ -73,19 +81,91 @@ static ssize_t ledmatix_write(struct file *filp, const char *buffer, size_t size
 	
 	//databuf[maxdatalen] = 0;
 	//pr_info("%s: %d remains, %s\n", __func__, ret, rpisense->received_image);
-	pr_info("%s: %d written\n", __func__, sizeof(rpisense->received_image));
+	//pr_info("%s: %d written\n", __func__, sizeof(rpisense->received_image));
 	flush(rpisense);
 	return ret;
 
 }
 
+static int humidy_device_open(struct inode *inode, struct file *file){
+	if (H_DeviceOpen)
+		return -EBUSY;
+	H_DeviceOpen++;
+	//pr_info("humidity opened\n");
+	return 0;
+}
+
+static int humidy_device_release(struct inode *inode, struct file *file){
+	//pr_info("humidity released\n");
+	H_DeviceOpen--;
+	return 0;
+}
+
+static ssize_t humidy_read(struct file *flip, char *buffer, size_t size, loff_t *offset){
+
+	int ret ;
+	size_t len;
+	struct hts221* my;
+	my = &rpisense->hts221_data;
+	//get temperature
+	get_hts221(rpisense);
+	//pr_info("%s: %d\n",__func__, temp);
+	sprintf(rpisense->sending_humidity + strlen(rpisense->sending_humidity), "%d,", my->H0_rH_x2);
+	sprintf(rpisense->sending_humidity + strlen(rpisense->sending_humidity), "%d,", my->H1_rH_x2);
+	sprintf(rpisense->sending_humidity + strlen(rpisense->sending_humidity), "%d,", my->H0_T0_OUT);
+	sprintf(rpisense->sending_humidity + strlen(rpisense->sending_humidity), "%d,", my->H1_T0_OUT);
+	sprintf(rpisense->sending_humidity + strlen(rpisense->sending_humidity), "%d", my->H_OUT);
+
+	len = sizeof(rpisense->sending_humidity);
+	//pr_info("%s: %d length\n", __func__, len);
+	//pr_info("%s: %s\n", __func__, rpisense->sending_humidity);
+
+	if (size > len)
+		size = len;
+
+	ret = copy_to_user(buffer, (void*)rpisense->sending_humidity, size);
+	if(ret)
+		return -EFAULT;
+	//pr_info("%s: %d was read\n",__func__, size);
+	sprintf(rpisense->sending_humidity, "%s","");
+	return size;
+}
+
+static ssize_t humidy_ledmatix_write(struct file *filp, const char *buffer, size_t size, loff_t *offset){
+	size_t maxdatalen = LED_MAX;
+	int ret;
+
+	if (size < maxdatalen)
+		maxdatalen = size; 
+	ret = copy_from_user(rpisense->received_image, buffer, maxdatalen);
+	
+	//databuf[maxdatalen] = 0;
+	//pr_info("%s: %d remains, %s\n", __func__, ret, rpisense->received_image);
+	//pr_info("%s: %d written\n", __func__, sizeof(rpisense->received_image));
+	flush(rpisense);
+	return ret;
+
+
+
+	return 0;
+}
+
 
 static struct file_operations tmpre_fops = {
 	.read = temperature_read, //a user can read device to get temperature.
-	.write = ledmatix_write, // a user can write data to device linked to led matrix
-	.open = device_open,
-	.release = device_release,
+	.write = temper_ledmat_write, // a user can write data to device linked to led matrix
+	.open = temper_device_open,
+	.release = temper_device_release,
 };
+
+
+static struct file_operations humidy_fops= {
+	.read = humidy_read, //a user can read device to get humidity.
+	.write = humidy_ledmatix_write, // a user can write data to device linked to led matrix to display humidity
+	.open = humidy_device_open,
+	.release = humidy_device_release,
+};
+
 
 void clear_display(struct rpisense *rpisense_ptr){
 	struct i2c_client *client;
@@ -144,94 +224,142 @@ void default_display(struct rpisense *rpisense_ptr){
 
 }
 
-int get_temperature(struct rpisense *rpisense_ptr){
+void setup_hts221(struct rpisense *rpisense_ptr){
+	struct i2c_client *client;
+	struct rpisense *rpi;
+	rpi = rpisense_ptr;
+	client = rpi->i2c_client;
+	client->addr = HTS221;
+
+	//0x20, power on, ...
+	//device didnt update temperature after loading module.
+	//i2c_smbus_write_byte_data(client, 0x20, 0x81);
+	i2c_smbus_write_byte_data(client, 0x20, 0x87);
+	//oneshot initialize
+	i2c_smbus_write_byte_data(client, 0x21, 0x0);
+}
+
+void shutdown_hts221(struct rpisense *rpisense_ptr){
+	struct i2c_client *client;
+	struct rpisense *rpi;
+	rpi = rpisense_ptr;
+	client = rpi->i2c_client;
+	client->addr = HTS221;
+	i2c_smbus_write_byte_data(client, 0x20, 0x00);
+
+
+}
+
+
+int get_hts221(struct rpisense *rpisense_ptr){
+	//읽을 때 워드로 한번에 읽으면 안 읽어짐.
+	//바이트로 읽어 8비트씩 시프트 해야 함.
+	//https://blog.artwolf.in/a?ID=3d68fd7b-3948-45f9-816f-697ce0397d5e
 	int ret;
+	int temp;
 	struct i2c_client *client;
 	struct rpisense *rpi;
 	rpi = rpisense_ptr;
 
-
-	//initialize.
-	rpi->temperature_data.T0_degC_x8 = 0;
-	rpi->temperature_data.T1_degC_x8 = 0;
-	rpi->temperature_data.T0_OUT = 0;
-	rpi->temperature_data.T1_OUT = 0;
-	rpi->temperature_data.T_OUT = 0;
-	rpi->temperature_data.T1T0MSB = 0;
-	rpi->temperature_data.temperature = 0;
-
 	client = rpi->i2c_client;
 	client->addr = HTS221;
-	//0x20, power on, ...
-	//device didnt update temperature after loading module.
-	i2c_smbus_write_byte_data(client, 0x20, 0x81);
-
-	//oneshot initialize
-	i2c_smbus_write_byte_data(client, 0x21, 0x1);
-	msleep(100);
 
 	//0x27 chech..ready bit
 	ret = i2c_smbus_read_word_data(client, 0x27);
-	if (!(ret & 0x1)){
+	if (!(ret & 0x3)){
 		pr_info(KERN_ERR "register was not ready\n");
 		return 0;
 	}
 
-	//0x2a, little endian T_OUT;
+	//0x2a, T_OUT
+
+	ret = i2c_smbus_read_byte_data(client, 0x2a);
+	temp = i2c_smbus_read_byte_data(client, 0x2b);
+	rpi->hts221_data.T_OUT = (((uint16_t)(temp << 8)) | ((uint16_t)ret));
+
+	/*
 	ret = i2c_smbus_read_word_data(client, 0x2a);
-	//littled = cpu_to_le16(ret);
-	rpi->temperature_data.T_OUT = ret;
-	//pr_info("T_OUT: %x\n",ret);
+	rpi->hts221_data.T_OUT = ret;
+	*/
 
-	//pr_info("address: %x\n",client->addr);
-	//pr_info("val: %x\n",rpi->temperature_data.T_OUT);
+
+	//0x28, H_OUT
+	ret = i2c_smbus_read_byte_data(client, 0x28);
+	temp = i2c_smbus_read_byte_data(client, 0x29);
+	rpi->hts221_data.H_OUT = (((uint16_t)(temp << 8)) | ((uint16_t)ret));
+
+	//0x30, H0_rH_x2
+	ret = i2c_smbus_read_byte_data(client, 0x30);
+	rpi->hts221_data.H0_rH_x2= ret>>1;
+	//pr_info("rpi->hts221.H0_rH_x2: %d\n",rpi->hts221_data.H0_rH_x2);
+
+	//0x31, H1_rH_x2
+	ret = i2c_smbus_read_byte_data(client, 0x31);
+	rpi->hts221_data.H1_rH_x2= ret>>1;
+	//pr_info("rpi->hts221.H1_rH_x2: %d\n",rpi->hts221_data.H1_rH_x2);
+
+	//0x32, T0_degC_x8
 	ret = i2c_smbus_read_byte_data(client, 0x32);
-	//ret = cpu_to_le16(ret);
-	rpi->temperature_data.T0_degC_x8 = ret;
-	//pr_info("T0_degC: %x\n",ret);
+	rpi->hts221_data.T0_degC_x8 = ret;
 
+	//0x33, T1_degC_x8
 	ret = i2c_smbus_read_byte_data(client, 0x33);
-	//littled = cpu_to_le16(ret);
-	rpi->temperature_data.T1_degC_x8 = ret;
-	//pr_info("T1_degC: %x\n",ret);
+	rpi->hts221_data.T1_degC_x8 = ret;
 
-	//T1T0 msb
+	//0x35, T1T0 msb
 	ret = i2c_smbus_read_byte_data(client, 0x35);
-	rpi->temperature_data.T1T0MSB = ret;
+	rpi->hts221_data.T1T0MSB = ret;
 
-	rpi->temperature_data.T0_degC_x8 = \
-		(rpi->temperature_data.T0_degC_x8 + (1<<8)*(ret & 0x03))/8;
-	//pr_info("T0_degC_x8: %x\n",rpi->temperature_data.T0_degC_x8);
+	rpi->hts221_data.T0_degC_x8 = \
+		(rpi->hts221_data.T0_degC_x8 + (1<<8)*(ret & 0x03))/8;
 
-	rpi->temperature_data.T1_degC_x8 = \
-		(rpi->temperature_data.T1_degC_x8 + (1<<6)*(ret & 0x0c))/8;
-	//pr_info("T1_degC_x8: %x\n",rpi->temperature_data.T1_degC_x8);
+	rpi->hts221_data.T1_degC_x8 = \
+		(rpi->hts221_data.T1_degC_x8 + (1<<6)*(ret & 0x0c))/8;
 
+	//0x36, H0_T0_OUT
+	ret = i2c_smbus_read_byte_data(client, 0x36);
+	temp = i2c_smbus_read_byte_data(client, 0x37);
+	rpi->hts221_data.H0_T0_OUT = (((uint16_t)(temp << 8)) | ((uint16_t)ret));
+	//pr_info("rpi->hts221.H0_T0_OUT: %d\n",rpi->hts221_data.H0_T0_OUT);
+
+
+	//0x3a,  H1_T0_OUT
+	ret = i2c_smbus_read_byte_data(client, 0x3a);
+	temp = i2c_smbus_read_byte_data(client, 0x3b);
+	rpi->hts221_data.H1_T0_OUT = (((uint16_t)(temp << 8)) | ((uint16_t)ret));
+	//pr_info("rpi->hts221.H1_T0_OUT: %d\n",rpi->hts221_data.H1_T0_OUT);
+
+
+	//0x3c, T0_OUT
+
+	ret = i2c_smbus_read_byte_data(client, 0x3c);
+	temp = i2c_smbus_read_byte_data(client, 0x3d);
+	rpi->hts221_data.T0_OUT = (((uint16_t)(temp << 8)) | ((uint16_t)ret));
+	//pr_info(KERN_ERR "ret: %0x\n", ret);
+	//pr_info(KERN_ERR "temp: %0x\n", temp);
+
+ 
+	/*
 	ret = i2c_smbus_read_word_data(client, 0x3c);
-	//littled = cpu_to_le16(ret);
-	rpi->temperature_data.T0_OUT = ret;
-	//pr_info("T0_OUT: %x\n",ret);
+	rpi->hts221_data.T0_OUT = ret;
+	*/
+	//0x3e, T1_OUT
 
-	ret = i2c_smbus_read_word_data(client, 0x3e);
-	//littled = cpu_to_le16(ret);
-	rpi->temperature_data.T1_OUT = ret;
-	//pr_info("T1_OUT: %x\n",ret);
+	ret = i2c_smbus_read_byte_data(client, 0x3e);
+	temp = i2c_smbus_read_byte_data(client, 0x3f);
+	rpi->hts221_data.T1_OUT = (((uint16_t)(temp << 8)) | ((uint16_t)ret));
 
-
+	/*
+ 	ret = i2c_smbus_read_word_data(client, 0x3e);
+	rpi->hts221_data.T1_OUT = ret;
+	*/
 	//measeure temperature
-	ret = rpi->temperature_data.T0_degC_x8 + \
-	      (rpi->temperature_data.T_OUT - rpi->temperature_data.T0_OUT) *\
-	      (rpi->temperature_data.T1_degC_x8 - rpi->temperature_data.T0_degC_x8)\
-	      /(rpi->temperature_data.T1_OUT - rpi->temperature_data.T0_OUT);
+	ret = rpi->hts221_data.T0_degC_x8 + \
+	      (rpi->hts221_data.T_OUT - rpi->hts221_data.T0_OUT) *\
+	      (rpi->hts221_data.T1_degC_x8 - rpi->hts221_data.T0_degC_x8)\
+	      /(rpi->hts221_data.T1_OUT - rpi->hts221_data.T0_OUT);
 
-	rpi->temperature_data.temperature = ret;
-	//pr_info("val: %x\n",ret);
-
-
-	//0x20, power on, ...
-	//device didnt update temperature after loading module.
-	// 1hz로 해야 업데이트가 잘 됨.
-	i2c_smbus_write_byte_data(client, 0x20, 0x1);
+	rpi->hts221_data.temperature = ret;
 
 	if ((ret < 0) | (ret > 40))
 		return -1;
@@ -239,6 +367,7 @@ int get_temperature(struct rpisense *rpisense_ptr){
 		return ret;
 
 }
+
 
 
 static int rpisense_probe(struct i2c_client *i2c,
@@ -255,7 +384,7 @@ static int rpisense_probe(struct i2c_client *i2c,
 	rpisense->i2c_client = i2c;
 
 	//https://olegkutkov.me/2018/03/14/simple-linux-character-device-driver/
-	ret = alloc_chrdev_region(&dev, 0, 1, "char_tmpre");
+	ret = alloc_chrdev_region(&dev, 0, 2, "char_tmpre");
 	Major = MAJOR(dev);
 	
 	//user permission configure.
@@ -264,11 +393,14 @@ static int rpisense_probe(struct i2c_client *i2c,
 	mychardev_class->dev_uevent = mychardev_uevent;
 
 	cdev_init(&rpisense->cdev_temperature, &tmpre_fops);
+	cdev_init(&rpisense->cdev_humidity, &humidy_fops);
 	rpisense->cdev_temperature.owner = THIS_MODULE;
 
 	cdev_add(&rpisense->cdev_temperature, MKDEV(Major, 0), 1);
+	cdev_add(&rpisense->cdev_humidity, MKDEV(Major, 1), 1);
 
 	device_create(mychardev_class, NULL, MKDEV(Major, 0), NULL, "rs-tmpre%d",1);
+	device_create(mychardev_class, NULL, MKDEV(Major, 1), NULL, "rs-tmpre%d",2);
 
 	pr_info(KERN_INFO "%d was reigistered\n",Major);
 	if (Major < 0){
@@ -276,28 +408,10 @@ static int rpisense_probe(struct i2c_client *i2c,
 		return Major;
 	}
 
-	
 
+	setup_hts221(rpisense);
 	pr_info("probed\n");
-	//pr_info("temperature: %d\n",get_temperature(rpisense));
-	//display address is 0x46
-	//pr_info("client address is: %x\n", rpisense->i2c_client->addr);
-	//rpisense->i2c_client->addr = HTS221;
-	///pr_info("client address is: %x\n", rpisense->i2c_client->addr);
-	//pr_info("client id name is: %s\n", id->name);
-	//read temperature data
-	//who am i 
-	//ret=i2c_smbus_read_byte_data(rpisense->i2c_client, 0x0f);
-	//littled = cpu_to_le16(ret);
-	//pr_info("my name is %x\n",littled);
-	//littled = cpu_to_le16(ret);
-	//ret=i2c_smbus_read_byte_data(rpisense->i2c_client, 0x2a);
-	//pr_info("read: %d\n",littled);
-	//clear_display(rpisense);
 	default_display(rpisense);
-	//set_pixel(2,0, 0x00, 0x1, 0x0);
-	//set_pixel(3,1, 0x00, 0x0, 0x1);
-	//flush(rpisense);
 	rpisense->i2c_client->addr = 0x0;
 	return 0;
 }
@@ -306,13 +420,15 @@ static int rpisense_remove(struct i2c_client *i2c)
 {
 	struct rpisense *rpisense = i2c_get_clientdata(i2c);
 	device_destroy(mychardev_class, MKDEV(Major, 0));
+	device_destroy(mychardev_class, MKDEV(Major, 1));
 	class_unregister(mychardev_class);
 	//i2c remove가 destroy
 	//class_destroy(mychardev_class);
-	unregister_chrdev_region(MKDEV(Major, 0), 1);
+	unregister_chrdev_region(MKDEV(Major, 0), 2);
 	//unregister_chrdev(Major, DeviceName);
 	pr_info(KERN_INFO "unregistering device\n");
 	clear_display(rpisense);
+	shutdown_hts221(rpisense);
 	pr_info("removed\n");
 	return 0;
 }

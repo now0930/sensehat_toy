@@ -9,9 +9,14 @@
 struct hts221 {
 	int T0_degC_x8;
 	int T1_degC_x8;
+	int H0_rH_x2;
+	int H1_rH_x2;
 	int T0_OUT;
 	int T1_OUT;
+	int H0_T0_OUT;
+	int H1_T0_OUT;
 	int T_OUT;
+	int H_OUT;
 	int T1T0MSB;
 	int temperature;
 };
@@ -19,10 +24,11 @@ struct hts221 {
 struct rpisense {
 	struct device *dev;
 	struct i2c_client *i2c_client;
-	struct hts221 temperature_data;
+	struct hts221 hts221_data;
 	struct cdev cdev_temperature;
-	struct cdev cdev_ledmatrix;
-	char sending_data[4];
+	struct cdev cdev_humidity;
+	char sending_temperature[40];
+	char sending_humidity[40];
 	char received_image[LED_MAX];
 	/* Client devices */
 };
@@ -94,14 +100,20 @@ const char default_image[LED_MAX] ={
 	0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0
 };
 
-static int device_open(struct inode *, struct file *);
-static int device_release(struct inode *, struct file *);
+static int temper_device_open(struct inode *, struct file *);
+static int temper_device_release(struct inode *, struct file *);
 static ssize_t temperature_read(struct file *, char *, size_t, loff_t *);
-static ssize_t ledmatix_write(struct file *, const char *, size_t, loff_t *);
+static ssize_t temper_ledmat_write(struct file *, const char *, size_t, loff_t *);
+
+static int humidy_device_open(struct inode *, struct file *);
+static int humidy_device_release(struct inode *, struct file *);
+static ssize_t humidy_read(struct file *, char *, size_t, loff_t *);
+static ssize_t humidy_ledmatix_write(struct file *, const char *, size_t, loff_t *);
 
 
 
-int get_temperature(struct rpisense *rpisense_ptr);
+
+int get_hts221(struct rpisense *rpisense_ptr);
 void flush(struct rpisense *rpisense_ptr);
 
 
