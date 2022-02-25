@@ -28,13 +28,17 @@ void set_pixel(int x, int y, int red, char green, char blue, char* frame_buffer)
 
 void sp_default(char* frame_buffer)
 {
+	int ret;
+	/*
 	int i,j;
 	for (i=0; i<8; i++){
 		for (j=0; j<8; j++){
 			set_pixel(i,j,0,0,0, frame_buffer);
 		}
 	}
-
+	*/
+	memset(frame_buffer, 0 , LED_MAX);
+	printf("%s\n", *frame_buffer);
 
 }
 
@@ -50,7 +54,7 @@ void sp_1(int y, int red, int green, int blue, char* frame_buffer){
 	green = green & 63;
 	blue = blue & 63;
 
-	for (i=1;i<7;i++){
+	for (i=1;i<6;i++){
 		set_pixel(i,y,red, green, blue, frame_buffer);
 	}
 
@@ -206,7 +210,7 @@ void sp_7(int y, int red, int green, int blue, char* frame_buffer){
 	blue = blue & 63;
 
 	int i;
-	for (i=1;i<7;i++){
+	for (i=1;i<6;i++){
 		set_pixel(i,y,red, green, blue, frame_buffer);
 	}
 	set_pixel(1,y+2,red, green, blue, frame_buffer);
@@ -352,11 +356,12 @@ float get_humidity(char* buf){
 
 int main(void) {
 	int fd, fd2;
+	int i;
 	char buf[100], temp[4], buf2[100];
 	int number;
-	char image[LED_MAX] = "", image2[LED_MAX] = "";
+	char image[LED_MAX] = {"0x0"}, image2[LED_MAX] = {"0x0"};
 	int read_ret, write_ret;
-	sleep(10);
+	sleep(1);
 	while (1) {
 
 		fd = open("/dev/rs-tmpre1", O_RDWR);
@@ -369,8 +374,7 @@ int main(void) {
 		//printf("fd = %d, ret write = %d, ret read = %d\n", fd, write_ret, read_ret);
 		//printf("temp content = %s\n", buf);
 		sprintf(temp, "%0.1f", get_temper(buf));
-		//printf("temp is: %s\n", temp);
-		//printf("tempe = %s\n", temp);
+		printf("temp is: %s\n", temp);
 		number = (int)temp[0]- '0';
 		//printf("number=%d\n", number);
 		switch (number%10) {
@@ -439,11 +443,18 @@ int main(void) {
 				sp_9(1, 10, 0, 0,image);
 				break;
 		}
+
 		write_ret = write(fd, image, LED_MAX);
+
+		for (i=0; i<LED_MAX; i++){
+			if( image[i] != 0)
+				printf("%d: %x ", i, image[i]);
+		}
+
 		//ioctl(fd, IOCTL_PRINT, NULL);
 		close(fd);
 		//printf("in a loop\n");
-		sleep(2);
+		sleep(1);
 		fd2 = open("/dev/rs-tmpre2", O_RDWR);
 		if (fd2 < 0) {
 			printf("failed opening device: %s\n", strerror(errno));
@@ -526,10 +537,14 @@ int main(void) {
 		//printf("content = %s\n", buf2);
 		//printf("humidity: %0.1f\n",get_humidity(buf2));
 		//printf("fd = %d, ret write = %d, ret read = %d\n", fd2, write_ret, read_ret);
-		write_ret = write(fd2, image2, LED_MAX);
+		for (i=0; i<LED_MAX; i++){
+			if( image2[i] != 0)
+				printf("%d: %x ", i, image2[i]);
+		}
 
+		write_ret = write(fd2, image2, LED_MAX);
 		close(fd2);
-		sleep(2);
+		sleep(1);
 
 	}
 }
