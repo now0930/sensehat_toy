@@ -38,7 +38,7 @@ void sp_default(char* frame_buffer)
 	}
 	*/
 	memset(frame_buffer, 0 , LED_MAX);
-	printf("%s\n", *frame_buffer);
+	//printf("%s\n", *frame_buffer);
 
 }
 
@@ -331,7 +331,7 @@ float get_humidity(char* buf){
 	int H_OUT;
 	char *token;
 	int temp_int[7];
-	int i=0;
+	int i=0, dividor=1;
 	token = strtok(buf, ",");
 	while (token != NULL){
 		temp_int[i] = atoi(token);
@@ -345,9 +345,14 @@ float get_humidity(char* buf){
 	H0_T0_OUT = temp_int[2];
 	H1_T0_OUT = temp_int[3];
 	H_OUT = temp_int[4];
+	
+	dividor = (H1_T0_OUT - H0_T0_OUT);
+	if (dividor == 0)
+		dividor = 1;
+
 
 	humidity = H0_rH_x2 + (H_OUT - H0_T0_OUT) * (H1_rH_x2 - H0_rH_x2)/\
-		   (H1_T0_OUT - H0_T0_OUT);
+		   dividor;
 	//printf("check: %0.1f\n", humidity);
 	return humidity;
 }
@@ -374,7 +379,7 @@ int main(void) {
 		//printf("fd = %d, ret write = %d, ret read = %d\n", fd, write_ret, read_ret);
 		//printf("temp content = %s\n", buf);
 		sprintf(temp, "%0.1f", get_temper(buf));
-		printf("temp is: %s\n", temp);
+		//printf("temp is: %s\n", temp);
 		number = (int)temp[0]- '0';
 		//printf("number=%d\n", number);
 		switch (number%10) {
@@ -446,15 +451,10 @@ int main(void) {
 
 		write_ret = write(fd, image, LED_MAX);
 
-		for (i=0; i<LED_MAX; i++){
-			if( image[i] != 0)
-				printf("%d: %x ", i, image[i]);
-		}
-
 		//ioctl(fd, IOCTL_PRINT, NULL);
 		close(fd);
 		//printf("in a loop\n");
-		sleep(1);
+		sleep(5);
 		fd2 = open("/dev/rs-tmpre2", O_RDWR);
 		if (fd2 < 0) {
 			printf("failed opening device: %s\n", strerror(errno));
@@ -534,17 +534,10 @@ int main(void) {
 				break;
 		}
 
-		//printf("content = %s\n", buf2);
-		//printf("humidity: %0.1f\n",get_humidity(buf2));
-		//printf("fd = %d, ret write = %d, ret read = %d\n", fd2, write_ret, read_ret);
-		for (i=0; i<LED_MAX; i++){
-			if( image2[i] != 0)
-				printf("%d: %x ", i, image2[i]);
-		}
 
 		write_ret = write(fd2, image2, LED_MAX);
 		close(fd2);
-		sleep(1);
+		sleep(5);
 
 	}
 }
